@@ -15,13 +15,28 @@ export default function LoginScreen({ onLogin, pendingFbUser }) {
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState('');
 
-  // App.jsx에서 신규 유저 감지 → 바로 이름/계층 입력 단계로
+  // App.jsx에서 유저 감지 → 이름/계층 입력 단계로
   useEffect(() => {
-    if (pendingFbUser) {
+    if (!pendingFbUser) return;
+    const load = async () => {
       setFbUser(pendingFbUser);
-      setNickname(pendingFbUser.displayName || '');
+      try {
+        // 기존 유저면 저장된 닉네임 미리 채우기
+        const { doc, getDoc } = await import('firebase/firestore');
+        const { db } = await import('./firebase.js');
+        const snap = await getDoc(doc(db, 'users', pendingFbUser.uid));
+        if (snap.exists()) {
+          setNickname(snap.data().nickname || pendingFbUser.displayName || '');
+          setTier(snap.data().tier || '대학생');
+        } else {
+          setNickname(pendingFbUser.displayName || '');
+        }
+      } catch {
+        setNickname(pendingFbUser.displayName || '');
+      }
       setStep('name');
-    }
+    };
+    load();
   }, [pendingFbUser]);
 
   // 리디렉션 로그인 결과 처리
