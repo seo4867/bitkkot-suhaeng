@@ -65,10 +65,11 @@ export default function LoginScreen({ onLogin, pendingFbUser }) {
 
   const handleGoogle = async () => {
     setLoading(true); setError('');
+    // 명시적 로그인 플래그 설정 → App.jsx가 항상 이름/계층 입력 단계로 보냄
+    sessionStorage.setItem('explicit_login', 'true');
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      // onAuthStateChanged가 App.jsx에서 처리하므로 여기서는 별도 처리 불필요
-      // pendingFbUser가 세팅되면 useEffect가 name 단계로 전환
+      await signInWithPopup(auth, googleProvider);
+      // onAuthStateChanged → pendingFbUser → useEffect → step='name'
     } catch (e) {
       if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
         await signInWithRedirect(auth, googleProvider).catch(e2 => {
