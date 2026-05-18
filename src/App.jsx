@@ -1288,7 +1288,6 @@ export default function App() {
 
   if (!user) return <LoginScreen onLogin={handleLogin}/>;
 
-  useEffect(()=>{loadData();},[]);
 
   const playNotifSound=()=>{
     try{
