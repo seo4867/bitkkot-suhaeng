@@ -1430,17 +1430,24 @@ export default function App() {
     const unsub = onAuthStateChanged(auth, async (fbUser)=>{
       if (fbUser) {
         try {
-          const snap = await getDoc(doc(db,'users',fbUser.uid));
-          if (snap.exists() && snap.data().tier) {
-            // 기존 유저 (계층 등록 완료) → 바로 입장
-            const u = { uid:fbUser.uid, nickname:snap.data().nickname, email:fbUser.email };
-            setUser(u); setCurrentUser(fbUser.uid);
-            setPendingFbUser(null);
-          } else {
-            // 신규 유저 또는 계층 미등록 → 이름/계층 입력
+          // 명시적 로그인(버튼 클릭) vs 앱 시작 자동 로그인 구분
+          const isExplicit = sessionStorage.getItem('explicit_login') === 'true';
+          sessionStorage.removeItem('explicit_login');
+
+          if (isExplicit) {
+            // 버튼으로 로그인 → 항상 이름/계층 입력 단계
             setUser(null);
             setPendingFbUser(fbUser);
             setCurrentUser(fbUser.uid);
+          } else {
+            // 앱 시작 시 기존 세션 → 프로필 완성된 경우만 자동 입장
+            const snap = await getDoc(doc(db,'users',fbUser.uid));
+            if (snap.exists() && snap.data().tier) {
+              const u = { uid:fbUser.uid, nickname:snap.data().nickname, email:fbUser.email };
+              setUser(u); setCurrentUser(fbUser.uid); setPendingFbUser(null);
+            } else {
+              setUser(null); setPendingFbUser(fbUser); setCurrentUser(fbUser.uid);
+            }
           }
         } catch {
           setUser(null); setPendingFbUser(null);
