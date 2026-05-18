@@ -2,23 +2,102 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
+
+    <!-- ── 뷰포트 ── -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+    <!-- ── PWA 기본 ── -->
     <meta name="theme-color" content="#B45309" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- ── iOS PWA ── -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="빛꽃수행일지" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <!-- iOS 스플래시 (선택사항) -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <!-- ── Android / 기타 ── -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="빛꽃수행일지" />
+
+    <!-- ── OG / 공유 ── -->
+    <meta property="og:title" content="빛꽃수행일지" />
+    <meta property="og:description" content="증산도 대학생 연합회 수행일지 앱" />
+    <meta property="og:image" content="/icons/icon-512.png" />
+    <meta property="og:type" content="website" />
+
+    <!-- ── 파비콘 ── -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
+
     <title>빛꽃수행일지</title>
+
+    <!-- 폰트 -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&family=Noto+Serif+KR:wght@400;600&display=swap" rel="stylesheet" />
+
+    <!-- 카카오 JS SDK -->
+    <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js"
+      integrity="sha384-TiCUE00h649CAMonG018J2ujOgDKW/kVWlChEuu4jK2vxfAAD0eZxzCKakxg55G4"
+      crossorigin="anonymous"></script>
+
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      html, body { height: 100%; }
       body { background: #FFF7ED; font-family: 'Noto Sans KR', sans-serif; }
       #root { max-width: 480px; margin: 0 auto; min-height: 100vh; }
+
+      /* iOS 안전 영역 (노치 대응) */
+      #root { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+
+      /* 스플래시 로딩 */
+      #splash {
+        position: fixed; inset: 0; background: #FFF7ED;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 16px; z-index: 9999; transition: opacity 0.4s;
+      }
+      #splash.hidden { opacity: 0; pointer-events: none; }
+      #splash-icon { width: 96px; height: 96px; border-radius: 22px; box-shadow: 0 8px 32px rgba(180,83,9,0.2); }
+      #splash-title { color: #B45309; font-size: 20px; font-weight: 800; font-family: 'Noto Serif KR', serif; }
+      #splash-sub { color: #D97706; font-size: 13px; }
     </style>
   </head>
   <body>
+
+    <!-- 스플래시 화면 (앱 로딩 중) -->
+    <div id="splash">
+      <img id="splash-icon" src="/icons/icon-192.png" alt="빛꽃수행일지" />
+      <div id="splash-title">빛꽃수행일지</div>
+      <div id="splash-sub">증산도 대학생 연합회</div>
+    </div>
+
     <div id="root"></div>
+
     <script type="module" src="/src/main.jsx"></script>
+
+    <script>
+      // Service Worker 등록
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then(() => {
+            console.log('SW registered');
+          }).catch(() => {});
+        });
+      }
+
+      // 스플래시 숨기기 (React 마운트 후)
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const splash = document.getElementById('splash');
+          if (splash) {
+            splash.classList.add('hidden');
+            setTimeout(() => splash.remove(), 400);
+          }
+        }, 800);
+      });
+    </script>
   </body>
 </html>
