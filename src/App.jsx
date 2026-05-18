@@ -1357,12 +1357,16 @@ export default function App() {
       if (fbUser) {
         try {
           const snap = await getDoc(doc(db,'users',fbUser.uid));
-          const nickname = snap.exists() ? snap.data().nickname : (fbUser.displayName||'수행자');
-          const u = { uid:fbUser.uid, nickname, email:fbUser.email };
-          setUser(u); setCurrentUser(fbUser.uid);
+          if (snap.exists()) {
+            // 기존 유저 - 바로 입장
+            const u = { uid:fbUser.uid, nickname:snap.data().nickname, email:fbUser.email };
+            setUser(u); setCurrentUser(fbUser.uid);
+          } else {
+            // 신규 유저 - 닉네임 입력 필요, LoginScreen에서 처리
+            setUser(null);
+          }
         } catch {
-          const u = { uid:fbUser.uid, nickname:fbUser.displayName||'수행자', email:fbUser.email };
-          setUser(u); setCurrentUser(fbUser.uid);
+          setUser(null);
         }
       } else {
         setUser(null); clearUser();
