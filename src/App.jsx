@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import * as XLSX from 'xlsx';
 import { store, setCurrentUser, clearUser } from './db.js';
 import LoginScreen from './LoginScreen.jsx';
 import { auth, db } from './firebase.js';
@@ -1138,7 +1139,72 @@ function MusicTab() {
 /* ══════════════════════════════════════════════
    SETTINGS MODAL
 ══════════════════════════════════════════════ */
-function SettingsModal({ settings, onSave, onClose }) {
+
+/* ══════════════════════════════════════════════
+   엑셀 내보내기
+══════════════════════════════════════════════ */
+async function exportToExcel(records, journals, nickname) {
+  const wb = XLSX.utils.book_new();
+
+  // ── 시트1: 수행 기록 ──
+  const recRows = [['날짜','수행(분)','배례(회)','청수-아침','청수-저녁']];
+  Object.entries(records).sort().forEach(([date, r]) => {
+    recRows.push([
+      date,
+      r.practice || 0,
+      r.baerae   || 0,
+      r.cheongsu?.morning ? '✓' : '',
+      r.cheongsu?.evening ? '✓' : '',
+    ]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(recRows), '수행기록');
+
+  // ── 시트2: 체험일지 ──
+  const jRows = [['날짜','시작','종료','수행시간(분)','기분','일지내용']];
+  Object.entries(journals).sort().forEach(([date, j]) => {
+    const entries = j?.entries || (j?.diary ? [j] : []);
+    entries.forEach(e => {
+      jRows.push([
+        date,
+        e.startTime || '',
+        e.endTime   || '',
+        e.duration  || '',
+        Array.isArray(e.moods) ? e.moods.join(', ') : (e.mood || ''),
+        e.diary     || '',
+      ]);
+    });
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(jRows), '체험일지');
+
+  // ── 시트3: 월간 통계 ──
+  const months = {};
+  Object.entries(records).forEach(([date, r]) => {
+    const m = date.substring(0,7);
+    if (!months[m]) months[m] = { practice:0, baerae:0, cheongsu:0, days:0 };
+    months[m].practice += r.practice || 0;
+    months[m].baerae   += r.baerae   || 0;
+    if (r.cheongsu?.morning || r.cheongsu?.evening) months[m].cheongsu++;
+    if ((r.practice||0) > 0 || (r.baerae||0) > 0) months[m].days++;
+  });
+  const statRows = [['월','총 수행(분)','총 수행(시간)','총 배례(회)','청수 실천일','수행 참여일']];
+  Object.entries(months).sort().forEach(([m, s]) => {
+    statRows.push([
+      m,
+      s.practice,
+      Math.round(s.practice / 60 * 10) / 10,
+      s.baerae,
+      s.cheongsu,
+      s.days,
+    ]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(statRows), '월간통계');
+
+  // ── 다운로드 ──
+  const today = new Date().toISOString().split('T')[0];
+  XLSX.writeFile(wb, `빛꽃수행일지_${nickname}_${today}.xlsx`);
+}
+
+function SettingsModal({ settings, records, journals, onSave, onClose }) {
   const [goal, setGoal]=useState(String(settings.goal??30));
   const [fontScale, setFontScale]=useState(settings.fontScale??"normal");
   const [notifs, setNotifs]=useState(settings.notifications??{morning:{enabled:false,time:"06:00"},evening:{enabled:false,time:"21:00"}});
@@ -1180,6 +1246,13 @@ function SettingsModal({ settings, onSave, onClose }) {
               );
             })}
           </div>
+        </Sec>
+        <Sec title="📥 내 기록 내보내기" bg="#ECFDF5" bc="#059669">
+          <p style={{color:"#6B7280",fontSize:12,margin:"0 0 10px",lineHeight:1.6}}>수행 기록과 체험일지를 엑셀 파일로 다운받을 수 있어요. 구글 드라이브에 저장해 두면 언제든 꺼내볼 수 있어요.</p>
+          <button onClick={()=>{ exportToExcel(records, journals, settings._nickname||'수행자'); onClose(); }}
+            style={{...BS, background:"#059669", color:"#fff", border:"none", width:"100%"}}>
+            📊 엑셀로 내보내기 (.xlsx)
+          </button>
         </Sec>
         <Sec title="ℹ️ 앱 정보" bg="#F5F3FF" bc="#7C3AED">
           <p style={{color:"#6B7280",fontSize:13,margin:"0 0 3px"}}>🌸 빛꽃수행일지 v2.0</p>
@@ -1339,7 +1412,7 @@ function AppMain({ user, onLogout }) {
         })}
       </div>
 
-      {showSettings&&<SettingsModal settings={settings} onSave={handleSaveSettings} onClose={()=>setShowSettings(false)}/>}
+      {showSettings&&<SettingsModal settings={{...settings, _nickname:user?.nickname}} records={records} journals={journals} onSave={handleSaveSettings} onClose={()=>setShowSettings(false)}/>}
     </div>
   );
 }
