@@ -48,6 +48,7 @@ export default function AdminPage() {
       const userList  = usersSnap.docs.map(d => ({
         uid:        d.id,
         nickname:   d.data().nickname  || '(이름없음)',
+        tier:       d.data().tier      || '일반',
         email:      d.data().email     || '',
         lastActive: d.data().lastActive?.toDate?.() || null,
         createdAt:  d.data().createdAt?.toDate?.()  || null,
@@ -170,6 +171,21 @@ export default function AdminPage() {
           ))}
         </div>
 
+
+        {/* 계층별 현황 */}
+        <div style={{background:'#fff',borderRadius:16,padding:18,marginBottom:14,border:'1px solid #EDE9FE'}}>
+          <p style={{color:'#7C3AED',fontSize:13,fontWeight:700,margin:'0 0 12px'}}>👥 계층별 현황</p>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+            {[['🧒','어린이'],['🙋','청소년'],['🎓','대학생'],['🌸','일반']].map(([emoji,t])=>(
+              <div key={t} style={{background:'#F5F3FF',borderRadius:10,padding:'10px 12px',display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:20}}>{emoji}</span>
+                <span style={{color:'#6B7280',fontSize:13,flex:1}}>{t}</span>
+                <span style={{color:'#5B21B6',fontSize:20,fontWeight:800}}>{users.filter(u=>(u.tier||'일반')===t).length}<span style={{fontSize:11,color:'#A78BFA'}}>명</span></span>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* 가입자 명단 */}
         <div style={{background:'#fff',borderRadius:16,padding:18,border:'1px solid #EDE9FE'}}>
           <p style={{color:'#7C3AED',fontSize:13,fontWeight:700,margin:'0 0 12px'}}>
@@ -180,7 +196,8 @@ export default function AdminPage() {
               <div key={u.uid} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:'#FAFAFA',borderRadius:10}}>
                 <span style={{fontSize:12,color:'#C084FC',minWidth:22,fontWeight:700}}>{i+1}</span>
                 <span style={{flex:1,fontSize:14,color:'#374151',fontWeight:500}}>{u.nickname}</span>
-                <span style={{fontSize:11,color:'#9CA3AF'}}>최근 {fmt(u.lastActive)}</span>
+                  <span style={{fontSize:10,background:'#EDE9FE',color:'#7C3AED',borderRadius:6,padding:'2px 6px',fontWeight:600}}>{u.tier||'일반'}</span>
+                <span style={{fontSize:11,color:'#9CA3AF'}}>{fmt(u.lastActive)}</span>
               </div>
             ))}
           </div>
