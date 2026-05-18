@@ -1,42 +1,69 @@
 import { useState } from 'react';
-import { signInWithPopup } from 'firebase/auth';
-import { doc, getDoc }     from 'firebase/firestore';
+import { signInWithPopup, signInWithRedirect, getRedirectResult } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import { auth, googleProvider, db } from './firebase.js';
 import { saveUserProfile } from './db.js';
+import { useEffect } from 'react';
 
 export default function LoginScreen({ onLogin }) {
-  const [step,     setStep]     = useState('login');   // 'login' | 'name'
+  const [step,     setStep]     = useState('login');
   const [nickname, setNickname] = useState('');
   const [fbUser,   setFbUser]   = useState(null);
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState('');
 
-  /* ── 구글 로그인 ── */
+  // 리디렉션 로그인 결과 처리
+  useEffect(() => {
+    setLoading(true);
+    getRedirectResult(auth).then(async (result) => {
+      if (result?.user) {
+        const user = result.user;
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (snap.exists()) {
+          await saveUserProfile({ uid: user.uid, nickname: snap.data().nickname, email: user.email });
+          onLogin({ uid: user.uid, nickname: snap.data().nickname, email: user.email });
+        } else {
+          setFbUser(user);
+          setNickname(user.displayName || '');
+          setStep('name');
+        }
+      }
+    }).catch(e => {
+      console.error(e);
+    }).finally(() => setLoading(false));
+  }, []);
+
   const handleGoogle = async () => {
     setLoading(true); setError('');
     try {
+      // 팝업 먼저 시도
       const result = await signInWithPopup(auth, googleProvider);
-      const user   = result.user;
-
-      // 기존 가입자인지 확인
+      const user = result.user;
       const snap = await getDoc(doc(db, 'users', user.uid));
       if (snap.exists()) {
-        // 기존 유저 → 바로 입장
         await saveUserProfile({ uid: user.uid, nickname: snap.data().nickname, email: user.email });
         onLogin({ uid: user.uid, nickname: snap.data().nickname, email: user.email });
       } else {
-        // 신규 유저 → 이름 입력 단계
         setFbUser(user);
         setNickname(user.displayName || '');
         setStep('name');
       }
     } catch (e) {
-      setError('구글 로그인에 실패했습니다. 다시 시도해 주세요.');
+      console.error('Login error:', e.code, e.message);
+      // 팝업 차단 시 리디렉션으로 전환
+      if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+        } catch (e2) {
+          setError('로그인 실패: ' + e2.message);
+        }
+      } else {
+        setError('로그인 실패 (' + e.code + '): 다시 시도해 주세요.');
+      }
     }
     setLoading(false);
   };
 
-  /* ── 이름 저장 ── */
   const handleSaveName = async () => {
     if (!nickname.trim()) { setError('이름을 입력해 주세요.'); return; }
     setLoading(true);
@@ -63,6 +90,14 @@ export default function LoginScreen({ onLogin }) {
     hint: { color:'#556080', fontSize:11, textAlign:'center', marginTop:20, lineHeight:1.7 },
   };
 
+  if (loading && step === 'login') return (
+    <div style={S.wrap}>
+      <img src="/icons/icon-192.png" alt="빛꽃수행" style={S.icon}/>
+      <div style={S.title}>빛꽃수행일지</div>
+      <div style={{color:'#8899BB', fontSize:14, marginTop:20}}>⏳ 로그인 중...</div>
+    </div>
+  );
+
   return (
     <div style={S.wrap}>
       <img src="/icons/icon-192.png" alt="빛꽃수행" style={S.icon}/>
@@ -76,14 +111,12 @@ export default function LoginScreen({ onLogin }) {
               로그인하면 수행 기록이 클라우드에 저장되어<br/>기기를 바꿔도 이어집니다.
             </p>
             <button onClick={handleGoogle} disabled={loading} style={S.googleBtn}>
-              {loading ? '⏳' : (
-                <svg width="20" height="20" viewBox="0 0 48 48">
-                  <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 2.9l5.7-5.7C34.2 7.1 29.4 5 24 5 12.4 5 3 14.4 3 26s9.4 21 21 21 21-9.4 21-21c0-1.3-.1-2.7-.4-3.9z"/>
-                  <path fill="#FF3D00" d="M6.3 15.1l6.6 4.8C14.7 16.2 19 13 24 13c3.1 0 5.8 1.1 8 2.9l5.7-5.7C34.2 7.1 29.4 5 24 5 16.3 5 9.7 9.1 6.3 15.1z"/>
-                  <path fill="#4CAF50" d="M24 47c5.2 0 9.9-1.9 13.5-5.1l-6.2-5.2C29.3 38.6 26.8 39.5 24 39.5c-5.3 0-9.7-3.2-11.3-7.8l-6.7 5.1C9.5 43 16.3 47 24 47z"/>
-                  <path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4 5.4l6.2 5.2C41.2 35.3 45 30.7 45 26c0-1.3-.1-2.7-.4-3.9z"/>
-                </svg>
-              )}
+              <svg width="20" height="20" viewBox="0 0 48 48">
+                <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 2.9l5.7-5.7C34.2 7.1 29.4 5 24 5 12.4 5 3 14.4 3 26s9.4 21 21 21 21-9.4 21-21c0-1.3-.1-2.7-.4-3.9z"/>
+                <path fill="#FF3D00" d="M6.3 15.1l6.6 4.8C14.7 16.2 19 13 24 13c3.1 0 5.8 1.1 8 2.9l5.7-5.7C34.2 7.1 29.4 5 24 5 16.3 5 9.7 9.1 6.3 15.1z"/>
+                <path fill="#4CAF50" d="M24 47c5.2 0 9.9-1.9 13.5-5.1l-6.2-5.2C29.3 38.6 26.8 39.5 24 39.5c-5.3 0-9.7-3.2-11.3-7.8l-6.7 5.1C9.5 43 16.3 47 24 47z"/>
+                <path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4 5.4l6.2 5.2C41.2 35.3 45 30.7 45 26c0-1.3-.1-2.7-.4-3.9z"/>
+              </svg>
               {loading ? '로그인 중...' : '구글로 시작하기'}
             </button>
           </>
