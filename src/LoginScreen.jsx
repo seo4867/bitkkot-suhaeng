@@ -7,7 +7,7 @@ import { saveUserProfile } from './db.js';
 const TIERS = ['어린이', '청소년', '대학생', '일반'];
 const TIER_EMOJI = { '어린이':'🧒', '청소년':'🙋', '대학생':'🎓', '일반':'🌸' };
 
-export default function LoginScreen({ onLogin }) {
+export default function LoginScreen({ onLogin, pendingFbUser }) {
   const [step,     setStep]     = useState('login');
   const [nickname, setNickname] = useState('');
   const [tier,     setTier]     = useState('대학생');
@@ -15,43 +15,45 @@ export default function LoginScreen({ onLogin }) {
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState('');
 
+  // App.jsx에서 신규 유저 감지 → 바로 이름/계층 입력 단계로
+  useEffect(() => {
+    if (pendingFbUser) {
+      setFbUser(pendingFbUser);
+      setNickname(pendingFbUser.displayName || '');
+      setStep('name');
+    }
+  }, [pendingFbUser]);
+
+  // 리디렉션 로그인 결과 처리
   useEffect(() => {
     const init = async () => {
-      setLoading(true);
+      if (pendingFbUser) return; // pendingFbUser가 있으면 이미 처리됨
       try {
         const result = await getRedirectResult(auth);
-        if (result?.user) { await checkAndRoute(result.user); return; }
-        const cur = auth.currentUser;
-        if (cur) {
-          const snap = await getDoc(doc(db, 'users', cur.uid));
-          if (!snap.exists()) {
-            setFbUser(cur); setNickname(cur.displayName || ''); setStep('name');
+        if (result?.user) {
+          setLoading(true);
+          const snap = await getDoc(doc(db, 'users', result.user.uid));
+          if (snap.exists()) {
+            await saveUserProfile({ uid: result.user.uid, nickname: snap.data().nickname, tier: snap.data().tier||'일반', email: result.user.email });
+            onLogin({ uid: result.user.uid, nickname: snap.data().nickname, email: result.user.email });
+          } else {
+            setFbUser(result.user);
+            setNickname(result.user.displayName || '');
+            setStep('name');
           }
+          setLoading(false);
         }
       } catch (e) { console.error(e); }
-      setLoading(false);
     };
     init();
   }, []);
-
-  const checkAndRoute = async (user) => {
-    try {
-      const snap = await getDoc(doc(db, 'users', user.uid));
-      if (snap.exists()) {
-        await saveUserProfile({ uid: user.uid, nickname: snap.data().nickname, tier: snap.data().tier || '일반', email: user.email });
-        onLogin({ uid: user.uid, nickname: snap.data().nickname, email: user.email });
-      } else {
-        setFbUser(user); setNickname(user.displayName || ''); setStep('name');
-      }
-    } catch (e) { setError('오류가 발생했습니다. 다시 시도해 주세요.'); }
-    setLoading(false);
-  };
 
   const handleGoogle = async () => {
     setLoading(true); setError('');
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      await checkAndRoute(result.user);
+      // onAuthStateChanged가 App.jsx에서 처리하므로 여기서는 별도 처리 불필요
+      // pendingFbUser가 세팅되면 useEffect가 name 단계로 전환
     } catch (e) {
       if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
         await signInWithRedirect(auth, googleProvider).catch(e2 => {
@@ -67,9 +69,15 @@ export default function LoginScreen({ onLogin }) {
     if (!nickname.trim()) { setError('이름을 입력해 주세요.'); return; }
     setLoading(true);
     try {
-      await saveUserProfile({ uid: fbUser.uid, nickname: nickname.trim(), tier, email: fbUser.email });
-      onLogin({ uid: fbUser.uid, nickname: nickname.trim(), email: fbUser.email });
-    } catch { setError('저장 중 오류가 발생했습니다.'); setLoading(false); }
+      const uid = fbUser?.uid || auth.currentUser?.uid;
+      const email = fbUser?.email || auth.currentUser?.email || '';
+      await saveUserProfile({ uid, nickname: nickname.trim(), tier, email });
+      onLogin({ uid, nickname: nickname.trim(), email });
+    } catch (e) {
+      console.error(e);
+      setError('저장 중 오류가 발생했습니다.');
+      setLoading(false);
+    }
   };
 
   const wrap = { minHeight:'100vh', background:'#0f1b3d', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', fontFamily:"'Noto Sans KR',sans-serif" };
@@ -90,6 +98,7 @@ export default function LoginScreen({ onLogin }) {
 
       <div style={{width:'100%',maxWidth:320,background:'rgba(255,255,255,0.06)',borderRadius:20,padding:24,border:'1px solid rgba(201,168,76,0.2)'}}>
 
+        {/* ── 구글 로그인 ── */}
         {step === 'login' && (<>
           <p style={{color:'#8899BB',fontSize:13,textAlign:'center',marginBottom:20,lineHeight:1.7}}>
             로그인하면 수행 기록이 클라우드에 저장되어<br/>기기를 바꿔도 이어집니다.
@@ -106,27 +115,30 @@ export default function LoginScreen({ onLogin }) {
           </button>
         </>)}
 
+        {/* ── 이름 + 계층 입력 ── */}
         {step === 'name' && (<>
           <p style={{color:'#C9A84C',fontSize:14,fontWeight:600,textAlign:'center',marginBottom:20}}>
             처음 오셨군요! 👋<br/>
             <span style={{color:'#8899BB',fontSize:12,fontWeight:400}}>정보를 입력해 주세요</span>
           </p>
 
-          {/* 이름 */}
           <label style={{color:'#C9A84C',fontSize:12,fontWeight:600,marginBottom:6,display:'block'}}>이름 (닉네임)</label>
           <input value={nickname} onChange={e=>setNickname(e.target.value)}
             onKeyDown={e=>e.key==='Enter'&&handleSaveName()}
             placeholder="예: 홍길동" maxLength={10} autoFocus
             style={{width:'100%',padding:'11px 14px',borderRadius:11,border:'1.5px solid rgba(201,168,76,0.3)',background:'rgba(255,255,255,0.08)',color:'#fff',fontSize:14,outline:'none',boxSizing:'border-box',fontFamily:"'Noto Sans KR',sans-serif",marginBottom:16}}/>
 
-          {/* 계층 선택 */}
           <label style={{color:'#C9A84C',fontSize:12,fontWeight:600,marginBottom:8,display:'block'}}>계층</label>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:18}}>
             {TIERS.map(t => {
               const sel = tier === t;
               return (
                 <button key={t} onClick={()=>setTier(t)}
-                  style={{padding:'10px 6px',borderRadius:11,cursor:'pointer',border:`2px solid ${sel?'#C9A84C':'rgba(201,168,76,0.2)'}`,background:sel?'rgba(201,168,76,0.15)':'rgba(255,255,255,0.04)',color:sel?'#C9A84C':'#8899BB',fontSize:13,fontWeight:sel?700:400,display:'flex',flexDirection:'column',alignItems:'center',gap:3,transition:'all 0.15s'}}>
+                  style={{padding:'10px 6px',borderRadius:11,cursor:'pointer',
+                    border:`2px solid ${sel?'#C9A84C':'rgba(201,168,76,0.2)'}`,
+                    background:sel?'rgba(201,168,76,0.15)':'rgba(255,255,255,0.04)',
+                    color:sel?'#C9A84C':'#8899BB',fontSize:13,fontWeight:sel?700:400,
+                    display:'flex',flexDirection:'column',alignItems:'center',gap:3,transition:'all 0.15s'}}>
                   <span style={{fontSize:20}}>{TIER_EMOJI[t]}</span>
                   <span>{t}</span>
                 </button>
