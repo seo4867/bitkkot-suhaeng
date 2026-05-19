@@ -99,7 +99,7 @@ async function syncStats(uid, tier, date) {
 
     // 3) ★ 전체 통계 문서 업데이트 (관리자용)
     //    각 유저의 최신 기여분을 계산해서 덮어씀
-    const statsRef = doc(db, 'stats', 'monthly', month);
+    const statsRef = doc(db, 'stats', `monthly_${month}`);
     const statsSnap = await getDoc(statsRef);
     const existing = statsSnap.exists() ? statsSnap.data() : {};
 
