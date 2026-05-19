@@ -11,7 +11,7 @@
  */
 import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { doc, getDoc, getDocs, collection, deleteDoc, setDoc, increment, deleteField } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, deleteDoc, setDoc, increment } from 'firebase/firestore';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { db, auth, googleProvider, ADMIN_EMAIL } from './firebase.js';
 
@@ -69,7 +69,6 @@ export default function AdminPage() {
   const [error,       setError]       = useState('');
   const [stats,       setStats]       = useState(null);
   const [users,       setUsers]       = useState([]);
-  const [adminUids,   setAdminUids]   = useState([]);
   const [adminUids,   setAdminUids]   = useState([]);
 
   const now = new Date();
