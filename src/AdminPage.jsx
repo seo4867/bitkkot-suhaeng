@@ -110,84 +110,80 @@ export default function AdminPage() {
   const loadStats = async () => {
     setLoading(true); setError('');
     try {
-      const todayStr = now.toISOString().split('T')[0].replace(/-/g,'');
+      const todayStr = new Date().toISOString().split('T')[0].replace(/-/g,'');
 
-      // ① overview
-      const ovSnap  = await getDoc(doc(db,'stats','overview'));
-      const ovData  = ovSnap.exists() ? ovSnap.data() : {};
-      const todayCount = ovData[`daily_${todayStr}`] || 0;
+      // ① 전체 유저 목록 (항상 직접 읽기 - 가장 정확)
+      const usersSnap = await getDocs(collection(db,'users'));
+      const userList  = usersSnap.docs.map(d => ({
+        uid:        d.id,
+        nickname:   d.data().nickname   || '(이름없음)',
+        tier:       d.data().tier       || '일반',
+        email:      d.data().email      || '',
+        lastActive: d.data().lastActive?.toDate?.()?.toISOString() || '',
+      })).sort((a,b) => (b.lastActive||'') > (a.lastActive||'') ? 1 : -1);
 
-      // ② 유저 목록 (캐시 → 폴백)
-      let userList = [];
-      const ulSnap = await getDoc(doc(db,'stats','userList'));
-      const cachedUsers = Object.values(ulSnap.exists() ? (ulSnap.data().users||{}) : {})
-        .filter(u => u && u.uid); // null 엔트리 제거
-      if (cachedUsers.length > 0) {
-        userList = cachedUsers.sort((a,b)=>(b.lastActive||'')>(a.lastActive||'')?1:-1);
-      } else {
-        const usersSnap = await getDocs(collection(db,'users'));
-        userList = usersSnap.docs.map(d=>({
-          uid:d.id, nickname:d.data().nickname||'(이름없음)',
-          tier:d.data().tier||'일반', email:d.data().email||'',
-          lastActive:d.data().lastActive?.toDate?.()?.toISOString()||'',
-        })).sort((a,b)=>(b.lastActive||'')>(a.lastActive||'')?1:-1);
-      }
-      const totalUsers = ovData.totalUsers || userList.length;
+      // ② 총 가입자 / 오늘 접속자
+      const ovSnap   = await getDoc(doc(db,'stats','overview'));
+      const ovData   = ovSnap.exists() ? ovSnap.data() : {};
+      const totalUsers  = ovData.totalUsers  || userList.length;
+      const todayCount  = ovData[`daily_${todayStr}`] || 0;
 
-      // ③ 월 통계 (캐시 → 폴백)
-      let m = {};
-      const mSnap = await getDoc(doc(db,'stats',`monthly_${monthStr}`));
-      if (mSnap.exists() && (mSnap.data().totalPractice||0) > 0) {
-        m = mSnap.data();
-      } else {
-        const summaries = await Promise.all(
-          userList.map(u=>getDoc(doc(db,'users',u.uid,'summary',monthStr)).catch(()=>null))
-        );
-        summaries.forEach((s,i) => {
-          if (!s||!s.exists()) return;
-          const d=s.data(), t=userList[i].tier||'일반', k=`tier_${t}`;
-          m.totalPractice   = (m.totalPractice  ||0)+(d.totalPractice||0);
-          m.totalBaerae     = (m.totalBaerae    ||0)+(d.totalBaerae  ||0);
-          m.totalCheongsu   = (m.totalCheongsu  ||0)+(d.cheongsuDays ||0);
-          m.totalActiveDays = (m.totalActiveDays||0)+(d.activeDays   ||0);
-          m.totalRecords    = (m.totalRecords   ||0)+(d.recordCount  ||0);
-          m[`${k}_practice`]  =(m[`${k}_practice`] ||0)+(d.totalPractice||0);
-          m[`${k}_baerae`]    =(m[`${k}_baerae`]   ||0)+(d.totalBaerae  ||0);
-          m[`${k}_cheongsu`]  =(m[`${k}_cheongsu`] ||0)+(d.cheongsuDays ||0);
-          m[`${k}_activeDays`]=(m[`${k}_activeDays`]||0)+(d.activeDays  ||0);
-          if (!m.userContribs) m.userContribs={};
-          m.userContribs[userList[i].uid]={
-            practice:d.totalPractice||0, baerae:d.totalBaerae||0,
-            cheongsu:d.cheongsuDays||0, activeDays:d.activeDays||0,
-            records:d.recordCount||0, tier:t
-          };
-        });
-      }
+      // ③ 이번달 개인 summary 집계 (각 유저에서 직접 읽기)
+      const summaries = await Promise.all(
+        userList.map(u =>
+          getDoc(doc(db,'users',u.uid,'summary',monthStr)).catch(()=>null)
+        )
+      );
+
+      let totalPractice=0, totalBaerae=0, totalCheongsu=0, totalRecords=0;
+      const contribs = {};
+      const tierAgg  = {};
+      TIERS.forEach(t => { tierAgg[t]={practice:0,baerae:0,cheongsu:0,activeDays:0,users:0}; });
+
+      summaries.forEach((s,i) => {
+        if (!s || !s.exists()) return;
+        const d   = s.data();
+        const uid = userList[i].uid;
+        const t   = userList[i].tier || '일반';
+        if ((d.activeDays||0) === 0) return;
+
+        totalPractice += d.totalPractice || 0;
+        totalBaerae   += d.totalBaerae   || 0;
+        totalCheongsu += d.cheongsuDays  || 0;
+        totalRecords  += d.recordCount   || 0;
+        contribs[uid]  = { practice:d.totalPractice||0, baerae:d.totalBaerae||0,
+                           cheongsu:d.cheongsuDays||0, activeDays:d.activeDays||0, tier:t };
+
+        tierAgg[t].practice   += d.totalPractice || 0;
+        tierAgg[t].baerae     += d.totalBaerae   || 0;
+        tierAgg[t].cheongsu   += d.cheongsuDays  || 0;
+        tierAgg[t].activeDays += d.activeDays    || 0;
+        tierAgg[t].users++;
+      });
+
+      const activeUsers  = Object.keys(contribs).length;
+      const avgPractice  = activeUsers > 0 ? Math.round(totalPractice / activeUsers) : 0;
+      const cheongsuRate = totalRecords > 0 ? Math.round((totalCheongsu / totalRecords) * 100) : 0;
 
       // 계층별 통계
-      const tierStats={};
-      TIERS.forEach(t=>{
-        const k=`tier_${t}`;
-        tierStats[t]={
-          users:Object.values(m.userContribs||{}).filter(c=>c.tier===t&&(c.activeDays||0)>0).length,
-          totalUsers:userList.filter(u=>(u.tier||'일반')===t).length,
-          practice:m[`${k}_practice`]||0, baerae:m[`${k}_baerae`]||0,
-          cheongsuDays:m[`${k}_cheongsu`]||0, activeDays:m[`${k}_activeDays`]||0,
-        };
+      const tierStats = {};
+      TIERS.forEach(t => {
+        const totalT = userList.filter(u=>(u.tier||'일반')===t).length;
+        tierStats[t] = { ...tierAgg[t], totalUsers: totalT };
       });
-      const activeUsers = Object.values(m.userContribs||{}).filter(c=>(c.activeDays||0)>0).length;
-      const avgPractice = activeUsers>0?Math.round((m.totalPractice||0)/activeUsers):0;
-      const cheongsuRate=(m.totalRecords||0)>0?Math.round(((m.totalCheongsu||0)/m.totalRecords)*100):0;
 
-      setStats({totalUsers,todayCount,avgPractice,cheongsuRate,
-                totalPractice:m.totalPractice||0,activeUsers,tierStats});
-      setUsers(userList);
-      // 관리자 목록 로드
+      // ④ 관리자 목록
       const admSnap = await getDocs(collection(db,'admins'));
       setAdminUids(admSnap.docs.map(d=>d.id));
-    } catch(e){setError('로딩 실패: '+e.message);}
+
+      setStats({ totalUsers, todayCount, avgPractice, cheongsuRate,
+                 totalPractice, activeUsers, tierStats });
+      setUsers(userList);
+
+    } catch(e) { setError('로딩 실패: ' + e.message); }
     setLoading(false);
-  };;
+  };
+;
 
   /* 사용자 삭제 */
   const toggleAdmin = async (uid, nickname) => {
