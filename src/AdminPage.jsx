@@ -69,6 +69,8 @@ export default function AdminPage() {
   const [error,       setError]       = useState('');
   const [stats,       setStats]       = useState(null);
   const [users,       setUsers]       = useState([]);
+  const [adminUids,   setAdminUids]   = useState([]);
+  const [adminUids,   setAdminUids]   = useState([]);
 
   const now = new Date();
   const [selYear,  setSelYear]  = useState(now.getFullYear());
@@ -180,11 +182,29 @@ export default function AdminPage() {
       setStats({totalUsers,todayCount,avgPractice,cheongsuRate,
                 totalPractice:m.totalPractice||0,activeUsers,tierStats});
       setUsers(userList);
+      // 관리자 목록 로드
+      const admSnap = await getDocs(collection(db,'admins'));
+      setAdminUids(admSnap.docs.map(d=>d.id));
     } catch(e){setError('로딩 실패: '+e.message);}
     setLoading(false);
   };;
 
   /* 사용자 삭제 */
+  const toggleAdmin = async (uid, nickname) => {
+    const isAdminNow = adminUids.includes(uid);
+    if (isAdminNow) {
+      if (!window.confirm(`"${nickname}" 님의 관리자 권한을 해제할까요?`)) return;
+      await deleteDoc(doc(db,'admins',uid));
+      setAdminUids(prev => prev.filter(id=>id!==uid));
+      alert(`"${nickname}" 님이 관리자에서 해제됐어요.`);
+    } else {
+      if (!window.confirm(`"${nickname}" 님을 관리자로 등록할까요?`)) return;
+      await setDoc(doc(db,'admins',uid), { role:'admin', addedAt: new Date().toISOString() });
+      setAdminUids(prev => [...prev, uid]);
+      alert(`"${nickname}" 님이 관리자로 등록됐어요! ⭐`);
+    }
+  };
+
   const deleteUser = async (uid, nickname) => {
     if (!window.confirm(`"${nickname}" 님의 모든 데이터를 삭제할까요?`)) return;
     try {
@@ -358,11 +378,17 @@ export default function AdminPage() {
           <span style={S.label}>👤 가입자 명단 ({users.length}명)</span>
           <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:360,overflowY:'auto'}}>
             {users.map((u,i)=>(
-              <div key={u.uid} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:'#FAFAFA',borderRadius:10}}>
+              <div key={u.uid} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:adminUids.includes(u.uid)?'#FFFBEB':'#FAFAFA',borderRadius:10,border:adminUids.includes(u.uid)?'1px solid #FCD34D':'none'}}>
                 <span style={{fontSize:12,color:'#C084FC',minWidth:22,fontWeight:700}}>{i+1}</span>
-                <span style={{flex:1,fontSize:13,color:'#374151',fontWeight:500}}>{u.nickname}</span>
+                <span style={{flex:1,fontSize:13,color:'#374151',fontWeight:500}}>
+                  {u.nickname}
+                  {adminUids.includes(u.uid)&&<span style={{fontSize:9,background:'#FEF3C7',color:'#B45309',borderRadius:4,padding:'1px 4px',marginLeft:4,fontWeight:700}}>관리자</span>}
+                </span>
                 <span style={{fontSize:10,background:'#EDE9FE',color:'#7C3AED',borderRadius:6,padding:'2px 6px',fontWeight:600}}>{u.tier||'일반'}</span>
                 <span style={{fontSize:11,color:'#9CA3AF'}}>{fmt(u.lastActive)}</span>
+                <button onClick={()=>toggleAdmin(u.uid,u.nickname)}
+                  title={adminUids.includes(u.uid)?'관리자 해제':'관리자 등록'}
+                  style={{background:'none',border:'none',cursor:'pointer',fontSize:13,padding:'2px',color:adminUids.includes(u.uid)?'#F59E0B':'#D1D5DB'}}>⭐</button>
                 <button onClick={()=>deleteUser(u.uid,u.nickname)} title="삭제"
                   style={{background:'none',border:'none',cursor:'pointer',fontSize:14,color:'#EF4444',padding:'2px'}}>🗑️</button>
               </div>
