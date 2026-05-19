@@ -110,6 +110,7 @@ const QUOTES = [
   { id:74, category:"태상종도사님", text:"일반 신도 건 간부건 도무집행道務執行을 할려고 하면 열정熱情부터 가져라. 열정이 아니면 아무것도 안 된다. 절대로 포교도 안되고, 단체도 생명력을 잃어버린단 말이다. 상제님 천하사天下事를 성취하려는 순수한 정성과 열정으로 무장을 하라!", source:"1370205 종무의회, 태상종도사님" },
   { id:75, category:"태상종도사님", text:"공도公道를 위한 정성精誠 정성精誠도 종류 문제다. 개인의 욕심, 나만 잘되려고 하는 개인주의의 정성이 있고, 공도公道를 위한 정성도 있다. 그런데 사회 속에는 사회윤리가 있고, 그 윤리는 아주 공명정대公明正大하다. 자연섭리라는 게 공명정대하단 말이다. 다시 묶어서 세상만사라 하는 것은 사필귀정事必歸正이다. 한마디로 일은 반드시 바른 데로 돌아간다는 뜻이다.", source:"1370205 종무의회, 태상종도사님" },
   { id:76, category:"태상종도사님", text:"커~다란 아량雅量! 도생들에게 참 넓고 탕탕한 아량을 베풀어서 잘 감싸주는 것이 바로 사람을 쓰는 기술이다. 그럼으로써 도생들도 참 좋은 간부들을 만나서 그 간부들의 아량雅量속에서 참 넉넉한 신앙을 하면서 큰 인재人才로 성장成長도 하고 공功도 쌓고 스스로 깨닫는 게 있다.", source:"1370204 종무의회, 태상종도사님" },
+  { id:77, category:"태상종도사님", text:"빈 껍질 밖에 되지 않는다.", source:"1340914 조례, 태상종도사님" },
   { id:78, category:"태상종도사님", text:"지글거리는 성경신 자신의 신앙이 정립되고, 성경신誠敬信이 제대로 된 사람은 마땅히 포교를 하러 나서게 마련이다. 시간을 아끼고 또 아껴서, 새빨간 정성으로 물불을 가리지 않고 어디고 뛰어든다. 그런 사람이 포교를 하면, 그건 틀림없이 되는 것이다. 아주 지글지글 끊는 숯불 같은 정열을 가지고 포교하는데 어찌 안되겠는가?", source:"1190412 증대, 태상종도사님 말씀" },
   { id:79, category:"태상종도사님", text:"사람은 사람인지라 '인수무과人誰無過리요' 허물 없는 사람이 어디 있겠는가. '개즉위선改則爲善이라' 고치면 능히 착해질 수 있지 않은가. 그러니 서로 미워하지 말고, 장점만 따서 다 용서해라. 그렇게 해서 앞에서 잡아 끌고 뒤에서 밀어라. 서로 다 한 가족 아닌가. 일심단결을 해서 잘 해보자. 알았지?", source:"1370418 부산순방, 태상종도사님 도훈" },
   { id:80, category:"태상종도사님", text:"왜 포교를 하지 않는가? 그것은 보은 報恩 이념에 배치 背馳 된다. 증산도는 보은 報恩 신앙이다! 신앙 信仰의 번지수를 확실히 알고 신앙을 하라! 우리는 후천 5만년 세상 보은 報恩의 문패를 붙이고 산다.", source:"道紀 135.11.6 태상종도사님 대도말씀" },
@@ -1218,7 +1219,7 @@ function SettingsModal({ settings, records, journals, onSave, onLogout, onClose 
   return (
     <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
       <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.3)"}}/>
-      <div style={{position:"relative",background:"#fff",width:"100%",maxWidth:480,borderRadius:"24px 24px 0 0",padding:"24px 20px 44px",zIndex:1,maxHeight:"85vh",overflowY:"auto"}}>
+      <div style={{position:"relative",background:"#fff",width:"100%",maxWidth:480,borderRadius:"24px 24px 0 0",padding:"24px 20px 60px",zIndex:1,maxHeight:"90vh",overflowY:"auto"}}>
         <div style={{width:40,height:4,background:"#E5E7EB",borderRadius:2,margin:"0 auto 20px"}}/>
         <h3 style={{color:"#2D2840",fontSize:17,fontWeight:700,margin:"0 0 20px"}}>⚙️ 설정</h3>
         <Sec title="🎯 일일 수행 목표" bg="#FFF7ED" bc="#B45309">
@@ -1262,10 +1263,12 @@ function SettingsModal({ settings, records, journals, onSave, onLogout, onClose 
           <button onClick={onClose} style={{...BS,background:"#F3F4F6",color:"#6B7280",border:"none"}}>취소</button>
           <button onClick={handleSave} style={{...BS,background:"#7C3AED",color:"#fff",border:"none"}}>저장</button>
         </div>
-        <button onClick={()=>{onClose();setTimeout(()=>onLogout(),100);}}
-          style={{...BS,width:"100%",marginTop:10,background:"#FEE2E2",color:"#EF4444",border:"1px solid #FECACA"}}>
-          🚪 로그아웃
-        </button>
+        <div style={{marginTop:20,paddingTop:16,borderTop:"1px solid #F3F4F6"}}>
+          <button onClick={()=>{onClose();setTimeout(()=>onLogout(),100);}}
+            style={{width:"100%",padding:"14px",borderRadius:12,cursor:"pointer",border:"none",background:"#FEE2E2",color:"#EF4444",fontSize:15,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            🚪 로그아웃
+          </button>
+        </div>
       </div>
     </div>
   );
