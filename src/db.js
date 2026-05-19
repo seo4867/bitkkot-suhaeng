@@ -168,9 +168,11 @@ export async function saveUserProfile({ uid, nickname, tier, email }) {
       await setDoc(doc(db, 'stats', 'overview'), { totalUsers: increment(1) }, { merge: true });
     }
 
-    // 일별 접속 집계
+    // 일별 접속 집계 (overview 문서에 통합 - 2단계 경로)
     const today = new Date().toISOString().split('T')[0].replace(/-/g,'');
-    await setDoc(doc(db, 'stats', 'daily', today), { count: increment(1) }, { merge: true });
+    await setDoc(doc(db, 'stats', 'overview'), {
+      [`daily_${today}`]: increment(1),
+    }, { merge: true });
 
   } catch (e) { console.warn('saveUserProfile error', e); }
 }
