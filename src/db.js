@@ -1,23 +1,31 @@
 /**
  * 데이터 저장소
- * Firestore (클라우드) + localStorage (로컬 캐시)
+ * Firestore (클라우드) + IndexedDB 로컬 캐싱
  */
 import {
   doc, getDoc, setDoc, collection, getDocs,
   serverTimestamp, increment,
+  enableIndexedDbPersistence,
 } from 'firebase/firestore';
 import { db } from './firebase.js';
+
+/* ── Firestore 오프라인 로컬 캐싱 활성화 ── */
+enableIndexedDbPersistence(db).catch(err => {
+  if (err.code === 'failed-precondition') {
+    // 여러 탭 열린 경우 - 무시
+  } else if (err.code === 'unimplemented') {
+    // 브라우저 미지원 - 무시
+  }
+});
 
 let _uid = null;
 export const setCurrentUser = (uid) => { _uid = uid; };
 export const getCurrentUser = ()     => _uid;
 export const clearUser      = ()     => { _uid = null; };
 
-/* ── key 인코딩 (/ 제거) ── */
 const enc = k => k.replace(/\//g, '_SL_');
 const dec = k => k.replace(/_SL_/g, '/');
 
-/* ── 기본 store (기존 앱 인터페이스와 동일) ── */
 export const store = {
   get: async (key) => {
     if (_uid) {
@@ -31,16 +39,13 @@ export const store = {
   },
 
   set: async (key, value) => {
-    // 로컬 캐시
     try { localStorage.setItem(key, value); } catch {}
-    // Firestore
     if (_uid) {
       try {
         await setDoc(doc(db, 'users', _uid, 'data', enc(key)), {
           v: value,
           updatedAt: serverTimestamp(),
         });
-        // record 저장 시 월간 통계 동기화
         if (key.startsWith('record:')) {
           await syncMonthlySummary(_uid, key.replace('record:', ''));
         }
@@ -61,10 +66,9 @@ export const store = {
   },
 };
 
-/* ── 월간 통계 동기화 (개인 요약 → Firestore) ── */
 async function syncMonthlySummary(uid, date) {
   try {
-    const month = date.substring(0, 7); // YYYY-MM
+    const month = date.substring(0, 7);
     const listResult = await store.list('record:');
     const monthKeys  = (listResult.keys || []).filter(k => k.startsWith(`record:${month}`));
 
@@ -90,7 +94,6 @@ async function syncMonthlySummary(uid, date) {
   } catch (e) { console.warn('syncMonthlySummary error', e); }
 }
 
-/* ── 사용자 프로필 저장 ── */
 export async function saveUserProfile({ uid, nickname, tier, email }) {
   try {
     const ref  = doc(db, 'users', uid);
@@ -99,19 +102,17 @@ export async function saveUserProfile({ uid, nickname, tier, email }) {
 
     await setDoc(ref, {
       nickname,
-      tier: tier || '일반',
       email: email || '',
+      tier: tier || '일반',
       lastActive: serverTimestamp(),
       ...(isNew ? { createdAt: serverTimestamp() } : {}),
     }, { merge: true });
 
-    // 신규 가입이면 totalUsers +1
     if (isNew) {
       await setDoc(doc(db, 'stats', 'overview'),
         { totalUsers: increment(1) }, { merge: true });
     }
 
-    // 오늘 접속자 기록
     const today = new Date().toISOString().split('T')[0].replace(/-/g,'');
     await setDoc(doc(db, 'stats', 'daily', today),
       { count: increment(1), date: today }, { merge: true });
