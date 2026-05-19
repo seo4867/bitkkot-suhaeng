@@ -8,13 +8,10 @@
  */
 import {
   doc, getDoc, setDoc, collection, getDocs,
-  serverTimestamp, increment, arrayUnion, arrayRemove,
-  enableIndexedDbPersistence,
+  serverTimestamp, increment,
 } from 'firebase/firestore';
 import { db } from './firebase.js';
-
-/* ── Firestore 오프라인 로컬 캐싱 ── */
-enableIndexedDbPersistence(db).catch(() => {});
+// 로컬 캐싱은 firebase.js에서 초기화 시 설정
 
 let _uid  = null;
 let _tier = '일반';
