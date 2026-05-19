@@ -174,3 +174,65 @@ export async function saveUserProfile({ uid, nickname, tier, email }) {
 
   } catch (e) { console.warn('saveUserProfile error', e); }
 }
+
+/* ══════════════════════════════════════════════
+   기존 localStorage 기록을 Firebase로 동기화
+   로그인 시 1회 실행 → summary 문서 생성
+══════════════════════════════════════════════ */
+export async function syncLocalToFirestore(uid, tier) {
+  try {
+    // 이미 동기화했는지 확인 (중복 방지)
+    const doneKey = `_synced_${uid}`;
+    if (localStorage.getItem(doneKey)) return;
+
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('record:'));
+    if (keys.length === 0) return;
+
+    console.log(`[Sync] ${keys.length}개 기록 동기화 시작...`);
+
+    // 각 기록을 Firestore에 저장
+    for (const key of keys) {
+      const value = localStorage.getItem(key);
+      if (!value) continue;
+      try {
+        await setDoc(doc(db, 'users', uid, 'data', enc(key)), {
+          v: value,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (e) { console.warn('sync error:', key, e); }
+    }
+
+    // 월별 summary 재계산
+    const months = [...new Set(keys.map(k => k.replace('record:', '').substring(0, 7)))];
+    for (const month of months) {
+      const monthKeys = keys.filter(k => k.startsWith(`record:${month}`));
+      let totalPractice=0, totalBaerae=0, activeDays=0, cheongsuDays=0;
+
+      for (const k of monthKeys) {
+        const r = localStorage.getItem(k);
+        if (!r) continue;
+        try {
+          const d = JSON.parse(r);
+          if ((d.practice||0)>0||(d.baerae||0)>0||d.cheongsu?.morning||d.cheongsu?.evening) {
+            activeDays++;
+            totalPractice += d.practice||0;
+            totalBaerae   += d.baerae  ||0;
+            if (d.cheongsu?.morning||d.cheongsu?.evening) cheongsuDays++;
+          }
+        } catch {}
+      }
+
+      if (activeDays > 0) {
+        await setDoc(doc(db, 'users', uid, 'summary', month), {
+          totalPractice, totalBaerae, activeDays, cheongsuDays,
+          recordCount: monthKeys.length, updatedAt: serverTimestamp(),
+        });
+        console.log(`[Sync] ${month} summary 저장 완료 (수행${activeDays}일)`);
+      }
+    }
+
+    // 동기화 완료 표시
+    localStorage.setItem(doneKey, '1');
+    console.log('[Sync] 동기화 완료!');
+  } catch (e) { console.warn('syncLocalToFirestore error:', e); }
+}
