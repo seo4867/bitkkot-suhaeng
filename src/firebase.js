@@ -1,6 +1,6 @@
 import { initializeApp }       from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore }        from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, CACHE_SIZE_UNLIMITED } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -12,8 +12,15 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const auth          = getAuth(app);
-export const db            = getFirestore(app);
-export const googleProvider = new GoogleAuthProvider();
+
+export const auth = getAuth(app);
+
+// Firestore - 오프라인 로컬 캐싱 (최신 API)
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ cacheSizeBytes: CACHE_SIZE_UNLIMITED }),
+});
+
+export const googleProvider  = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
-export const ADMIN_EMAIL   = import.meta.env.VITE_ADMIN_EMAIL;
+
+export const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL;
