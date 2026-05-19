@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, deleteDoc, setDoc, increment } from 'firebase/firestore';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { db, auth, googleProvider, ADMIN_EMAIL } from './firebase.js';
 
@@ -35,6 +35,27 @@ export default function AdminPage() {
       }
     } catch { setError('로그인 실패'); }
     setLoading(false);
+  };
+
+  // 사용자 데이터 삭제 (Firestore만, Auth 계정은 유지)
+  const deleteUserData = async (uid, nickname) => {
+    if (!window.confirm(`"${nickname}" 님의 모든 데이터를 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`)) return;
+    try {
+      // data 서브컬렉션 삭제
+      const dataSnap = await getDocs(collection(db, 'users', uid, 'data'));
+      for (const d of dataSnap.docs) await deleteDoc(d.ref);
+      // summary 서브컬렉션 삭제
+      const sumSnap = await getDocs(collection(db, 'users', uid, 'summary'));
+      for (const d of sumSnap.docs) await deleteDoc(d.ref);
+      // 유저 문서 삭제
+      await deleteDoc(doc(db, 'users', uid));
+      // 총 가입자 수 -1
+      await setDoc(doc(db,'stats','overview'), { totalUsers: increment(-1) }, { merge: true });
+      alert(`"${nickname}" 님의 데이터가 삭제됐어요.`);
+      await loadStats();
+    } catch (e) {
+      alert('삭제 실패: ' + e.message);
+    }
   };
 
   const loadStats = async () => {
@@ -198,6 +219,7 @@ export default function AdminPage() {
                 <span style={{flex:1,fontSize:14,color:'#374151',fontWeight:500}}>{u.nickname}</span>
                   <span style={{fontSize:10,background:'#EDE9FE',color:'#7C3AED',borderRadius:6,padding:'2px 6px',fontWeight:600}}>{u.tier||'일반'}</span>
                 <span style={{fontSize:11,color:'#9CA3AF'}}>{fmt(u.lastActive)}</span>
+                  <button onClick={()=>deleteUserData(u.uid,u.nickname)} title="삭제" style={{background:'none',border:'none',cursor:'pointer',fontSize:14,color:'#EF4444',padding:'2px'}} >🗑️</button>
               </div>
             ))}
           </div>
