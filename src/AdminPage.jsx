@@ -75,32 +75,14 @@ export default function AdminPage() {
   const [selMonth, setSelMonth] = useState(now.getMonth()+1);
   const monthStr = `${selYear}-${p2(selMonth)}`;
 
-  const [isAdmin, setIsAdmin] = useState(false);
-
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async u => {
-      setAdminUser(u);
-      if (u) {
-        // ADMIN_EMAIL 또는 Firestore admins 컬렉션 체크
-        if (u.email === ADMIN_EMAIL) {
-          setIsAdmin(true);
-        } else {
-          try {
-            const snap = await getDoc(doc(db, 'admins', u.uid));
-            setIsAdmin(snap.exists());
-          } catch { setIsAdmin(false); }
-        }
-      } else {
-        setIsAdmin(false);
-      }
-      setAuthChecked(true);
-    });
+    const unsub = onAuthStateChanged(auth, u => { setAdminUser(u); setAuthChecked(true); });
     return () => unsub();
   }, []);
 
   useEffect(() => {
-    if (isAdmin) loadStats();
-  }, [isAdmin, monthStr]);
+    if (adminUser?.email === ADMIN_EMAIL) loadStats();
+  }, [adminUser, monthStr]);
 
   /* ─────────────────────────────────────────
      loadStats: 딱 3 reads (유저 전체 순회 없음)
@@ -228,12 +210,12 @@ export default function AdminPage() {
 
   if (!authChecked) return <div style={S.loginWrap}><div style={{color:'#C9A84C',fontSize:28}}>⏳</div></div>;
 
-  if (!adminUser || !isAdmin) return (
+  if (!adminUser || adminUser.email !== ADMIN_EMAIL) return (
     <div style={S.loginWrap}>
       <img src="/icons/icon-192.png" alt="" style={{width:80,height:80,borderRadius:18,marginBottom:16}}/>
       <h2 style={{color:'#C9A84C',fontSize:20,fontWeight:800,marginBottom:6,fontFamily:"'Noto Serif KR',serif"}}>관리자 페이지</h2>
       <p style={{color:'#8899BB',fontSize:13,marginBottom:28}}>빛꽃수행일지 · 증산도 대학생 연합회</p>
-      <button onClick={async()=>{setLoading(true);setError('');try{const r=await signInWithPopup(auth,googleProvider);const admSnap=await getDoc(doc(db,'admins',r.user.uid));const ok=r.user.email===ADMIN_EMAIL||admSnap.exists();if(!ok){await signOut(auth);setError('관리자 계정이 아닙니다.');}}catch{setError('로그인 실패');}setLoading(false);}} disabled={loading}
+      <button onClick={async()=>{setLoading(true);setError('');try{const r=await signInWithPopup(auth,googleProvider);if(r.user.email!==ADMIN_EMAIL){await signOut(auth);setError('관리자 계정이 아닙니다.');}}catch{setError('로그인 실패');}setLoading(false);}} disabled={loading}
         style={{width:'100%',maxWidth:300,padding:'14px',borderRadius:14,border:'none',background:'#fff',cursor:'pointer',fontSize:15,fontWeight:600,color:'#374151'}}>
         {loading?'⏳ 로그인 중...':'🔐 관리자 구글 로그인'}
       </button>
