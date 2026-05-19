@@ -1,31 +1,33 @@
 /**
  * 데이터 저장소
  * Firestore (클라우드) + IndexedDB 로컬 캐싱
+ *
+ * ── Firebase 읽기 최적화 전략 ──
+ * 사용자가 기록 저장 시 → stats/monthly/{YYYY-MM} 통계 문서 자동 업데이트
+ * 관리자 대시보드 → 통계 문서 3개만 읽음 (유저 전체 읽기 안 함)
  */
 import {
   doc, getDoc, setDoc, collection, getDocs,
-  serverTimestamp, increment,
+  serverTimestamp, increment, arrayUnion, arrayRemove,
   enableIndexedDbPersistence,
 } from 'firebase/firestore';
 import { db } from './firebase.js';
 
-/* ── Firestore 오프라인 로컬 캐싱 활성화 ── */
-enableIndexedDbPersistence(db).catch(err => {
-  if (err.code === 'failed-precondition') {
-    // 여러 탭 열린 경우 - 무시
-  } else if (err.code === 'unimplemented') {
-    // 브라우저 미지원 - 무시
-  }
-});
+/* ── Firestore 오프라인 로컬 캐싱 ── */
+enableIndexedDbPersistence(db).catch(() => {});
 
-let _uid = null;
-export const setCurrentUser = (uid) => { _uid = uid; };
-export const getCurrentUser = ()     => _uid;
-export const clearUser      = ()     => { _uid = null; };
+let _uid  = null;
+let _tier = '일반';
+export const setCurrentUser = (uid, tier) => { _uid = uid; _tier = tier || '일반'; };
+export const getCurrentUser = () => _uid;
+export const clearUser      = () => { _uid = null; _tier = '일반'; };
 
 const enc = k => k.replace(/\//g, '_SL_');
 const dec = k => k.replace(/_SL_/g, '/');
 
+/* ══════════════════════════════════════════
+   기본 store (기존 앱 인터페이스 유지)
+══════════════════════════════════════════ */
 export const store = {
   get: async (key) => {
     if (_uid) {
@@ -43,11 +45,11 @@ export const store = {
     if (_uid) {
       try {
         await setDoc(doc(db, 'users', _uid, 'data', enc(key)), {
-          v: value,
-          updatedAt: serverTimestamp(),
+          v: value, updatedAt: serverTimestamp(),
         });
+        // 기록 저장 시 통계 문서 자동 업데이트
         if (key.startsWith('record:')) {
-          await syncMonthlySummary(_uid, key.replace('record:', ''));
+          await syncStats(_uid, _tier, key.replace('record:', ''));
         }
       } catch (e) { console.warn('Firestore set error', e); }
     }
@@ -57,28 +59,31 @@ export const store = {
     if (_uid) {
       try {
         const snap = await getDocs(collection(db, 'users', _uid, 'data'));
-        const keys = snap.docs.map(d => dec(d.id)).filter(k => k.startsWith(prefix));
-        return { keys };
+        return { keys: snap.docs.map(d => dec(d.id)).filter(k => k.startsWith(prefix)) };
       } catch {}
     }
-    const keys = Object.keys(localStorage).filter(k => k.startsWith(prefix));
-    return { keys };
+    return { keys: Object.keys(localStorage).filter(k => k.startsWith(prefix)) };
   },
 };
 
-async function syncMonthlySummary(uid, date) {
+/* ══════════════════════════════════════════
+   통계 문서 자동 업데이트 (기록 저장 시 호출)
+   → 관리자 대시보드가 이 문서만 읽으면 됨
+══════════════════════════════════════════ */
+async function syncStats(uid, tier, date) {
   try {
-    const month = date.substring(0, 7);
+    const month = date.substring(0, 7); // YYYY-MM
+
+    // 1) 개인 월간 요약 계산
     const listResult = await store.list('record:');
     const monthKeys  = (listResult.keys || []).filter(k => k.startsWith(`record:${month}`));
 
     let totalPractice = 0, totalBaerae = 0, activeDays = 0, cheongsuDays = 0;
-
     for (const k of monthKeys) {
       const r = await store.get(k);
       if (!r) continue;
       const d = JSON.parse(r.value);
-      if ((d.practice || 0) > 0 || (d.baerae || 0) > 0 || d.cheongsu?.morning || d.cheongsu?.evening) {
+      if ((d.practice||0)>0 || (d.baerae||0)>0 || d.cheongsu?.morning || d.cheongsu?.evening) {
         activeDays++;
         totalPractice += d.practice || 0;
         totalBaerae   += d.baerae   || 0;
@@ -86,36 +91,89 @@ async function syncMonthlySummary(uid, date) {
       }
     }
 
+    // 2) 개인 요약 저장
     await setDoc(doc(db, 'users', uid, 'summary', month), {
       totalPractice, totalBaerae, activeDays, cheongsuDays,
-      recordCount: monthKeys.length,
-      updatedAt: serverTimestamp(),
+      recordCount: monthKeys.length, updatedAt: serverTimestamp(),
     });
-  } catch (e) { console.warn('syncMonthlySummary error', e); }
+
+    // 3) ★ 전체 통계 문서 업데이트 (관리자용)
+    //    각 유저의 최신 기여분을 계산해서 덮어씀
+    const statsRef = doc(db, 'stats', 'monthly', month);
+    const statsSnap = await getDoc(statsRef);
+    const existing = statsSnap.exists() ? statsSnap.data() : {};
+
+    // 이 유저의 이전 기여분 빼고, 새 기여분 더하기
+    const prevContrib = existing.userContribs?.[uid] || {};
+    const tierKey = `tier_${tier}`;
+    const prevTierKey = prevContrib.tier ? `tier_${prevContrib.tier}` : tierKey;
+
+    const newStats = {
+      // 전체 합계
+      totalPractice:  ((existing.totalPractice  || 0) - (prevContrib.practice||0)  + totalPractice),
+      totalBaerae:    ((existing.totalBaerae    || 0) - (prevContrib.baerae||0)    + totalBaerae),
+      totalCheongsu:  ((existing.totalCheongsu  || 0) - (prevContrib.cheongsu||0)  + cheongsuDays),
+      totalActiveDays:((existing.totalActiveDays|| 0) - (prevContrib.activeDays||0)+ activeDays),
+      totalRecords:   ((existing.totalRecords   || 0) - (prevContrib.records||0)   + monthKeys.length),
+
+      // 계층별 합계 (이전 계층에서 빼고 현재 계층에 더하기)
+      [`${prevTierKey}_practice`]:   ((existing[`${prevTierKey}_practice`]||0)   - (prevContrib.practice||0)),
+      [`${prevTierKey}_cheongsu`]:   ((existing[`${prevTierKey}_cheongsu`]||0)   - (prevContrib.cheongsu||0)),
+      [`${prevTierKey}_baerae`]:     ((existing[`${prevTierKey}_baerae`]||0)     - (prevContrib.baerae||0)),
+      [`${prevTierKey}_activeDays`]: ((existing[`${prevTierKey}_activeDays`]||0) - (prevContrib.activeDays||0)),
+      [`${tierKey}_practice`]:       ((existing[`${tierKey}_practice`]||0)   + totalPractice),
+      [`${tierKey}_cheongsu`]:       ((existing[`${tierKey}_cheongsu`]||0)   + cheongsuDays),
+      [`${tierKey}_baerae`]:         ((existing[`${tierKey}_baerae`]||0)     + totalBaerae),
+      [`${tierKey}_activeDays`]:     ((existing[`${tierKey}_activeDays`]||0) + activeDays),
+
+      // 이 유저의 최신 기여분 저장 (다음 업데이트 시 diff 계산용)
+      userContribs: {
+        ...(existing.userContribs || {}),
+        [uid]: { practice:totalPractice, baerae:totalBaerae, cheongsu:cheongsuDays, activeDays, records:monthKeys.length, tier },
+      },
+      updatedAt: serverTimestamp(),
+    };
+
+    // 음수 방지
+    Object.keys(newStats).forEach(k => {
+      if (typeof newStats[k] === 'number' && newStats[k] < 0) newStats[k] = 0;
+    });
+
+    await setDoc(statsRef, newStats, { merge: true });
+
+  } catch (e) { console.warn('syncStats error', e); }
 }
 
+/* ══════════════════════════════════════════
+   사용자 프로필 저장
+   → userList 캐시 문서도 함께 업데이트
+══════════════════════════════════════════ */
 export async function saveUserProfile({ uid, nickname, tier, email }) {
   try {
-    const ref  = doc(db, 'users', uid);
-    const snap = await getDoc(ref);
+    const ref   = doc(db, 'users', uid);
+    const snap  = await getDoc(ref);
     const isNew = !snap.exists();
 
     await setDoc(ref, {
-      nickname,
-      email: email || '',
-      tier: tier || '일반',
+      nickname, email: email||'', tier: tier||'일반',
       lastActive: serverTimestamp(),
       ...(isNew ? { createdAt: serverTimestamp() } : {}),
     }, { merge: true });
 
+    // ★ userList 캐시 문서 업데이트 (관리자 명단용 - 1개 문서만 읽으면 됨)
+    const entry = { uid, nickname, tier: tier||'일반', email: email||'', lastActive: new Date().toISOString() };
+    await setDoc(doc(db, 'stats', 'userList'), {
+      users: { [uid]: entry },
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
     if (isNew) {
-      await setDoc(doc(db, 'stats', 'overview'),
-        { totalUsers: increment(1) }, { merge: true });
+      await setDoc(doc(db, 'stats', 'overview'), { totalUsers: increment(1) }, { merge: true });
     }
 
+    // 일별 접속 집계
     const today = new Date().toISOString().split('T')[0].replace(/-/g,'');
-    await setDoc(doc(db, 'stats', 'daily', today),
-      { count: increment(1), date: today }, { merge: true });
+    await setDoc(doc(db, 'stats', 'daily', today), { count: increment(1) }, { merge: true });
 
   } catch (e) { console.warn('saveUserProfile error', e); }
 }
