@@ -10,6 +10,7 @@
  * 유저 전체 순회 없음 → 1000명이어도 3 reads만 사용
  */
 import { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { doc, getDoc, getDocs, collection, deleteDoc, setDoc, increment } from 'firebase/firestore';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { db, auth, googleProvider, ADMIN_EMAIL } from './firebase.js';
@@ -19,6 +20,47 @@ const fmtMins = m => { if(!m)return'0분'; const h=Math.floor(m/60),min=m%60; if
 const fmt  = d => d ? d.toString().slice(0,10) : '-';
 const TIERS = ['어린이','청소년','대학생','일반'];
 const TIER_ICON = {'어린이':'🧒','청소년':'🙋','대학생':'🎓','일반':'🌸'};
+
+
+/* ── 엑셀 내보내기 (추가 reads 없음 - 이미 로드된 데이터 사용) ── */
+function exportAdminExcel(stats, users, monthStr) {
+  const wb = XLSX.utils.book_new();
+
+  // ── 시트1: 가입자 명단 ──
+  const userRows = [['번호','닉네임','계층','최근접속일']];
+  users.forEach((u, i) => {
+    userRows.push([i+1, u.nickname, u.tier||'일반', u.lastActive ? u.lastActive.toString().slice(0,10) : '-']);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(userRows), '가입자명단');
+
+  // ── 시트2: 월별 전체 통계 ──
+  const fmtMins = m => { if(!m)return'0분'; const h=Math.floor(m/60),mn=m%60; if(h===0)return`${mn}분`; if(mn===0)return`${h}시간`; return`${h}시간 ${mn}분`; };
+  const statRows = [
+    ['항목','값'],
+    ['조회 월', monthStr],
+    ['총 가입자', `${stats.totalUsers}명`],
+    ['오늘 접속자', `${stats.todayCount}명`],
+    ['수행 참여자', `${stats.activeUsers}명`],
+    ['전체 총 수행', fmtMins(stats.totalPractice)],
+    ['1인 평균 수행', fmtMins(stats.avgPractice)],
+    ['청수 실천율', `${stats.cheongsuRate}%`],
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(statRows), '전체통계');
+
+  // ── 시트3: 계층별 통계 ──
+  const TIERS = ['어린이','청소년','대학생','일반'];
+  const tierRows = [['계층','전체인원','참여인원','평균수행','청수실천일','총배례']];
+  TIERS.forEach(t => {
+    const ts = stats.tierStats[t] || {};
+    const avg = ts.users > 0 ? Math.round((ts.practice||0)/ts.users) : 0;
+    tierRows.push([t, ts.totalUsers||0, ts.users||0, fmtMins(avg), ts.cheongsuDays||0, ts.baerae||0]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(tierRows), '계층별통계');
+
+  // ── 다운로드 ──
+  const today = new Date().toISOString().split('T')[0];
+  XLSX.writeFile(wb, `빛꽃수행일지_관리자_${monthStr}_${today}.xlsx`);
+}
 
 export default function AdminPage() {
   const [adminUser,   setAdminUser]   = useState(null);
@@ -55,7 +97,7 @@ export default function AdminPage() {
       const totalUsers = ovSnap.exists() ? (ovSnap.data().totalUsers || 0) : 0;
 
       // ② stats/monthly/{month} (1 read)
-      const mSnap = await getDoc(doc(db, 'stats', 'monthly', monthStr));
+      const mSnap = await getDoc(doc(db, 'stats', `monthly_${monthStr}`));
       const m = mSnap.exists() ? mSnap.data() : {};
 
       // ③ stats/userList (1 read)
@@ -159,6 +201,7 @@ export default function AdminPage() {
         </div>
         <div style={{display:'flex',gap:6}}>
           <button onClick={loadStats} style={{background:'#EDE9FE',border:'none',borderRadius:8,padding:'6px 10px',color:'#7C3AED',fontSize:12,fontWeight:600,cursor:'pointer'}}>🔄</button>
+          {stats && <button onClick={()=>exportAdminExcel(stats,users,monthStr)} style={{background:'#ECFDF5',border:'none',borderRadius:8,padding:'6px 10px',color:'#059669',fontSize:12,fontWeight:600,cursor:'pointer'}}>📥 엑셀</button>}
           <button onClick={()=>signOut(auth)} style={{background:'#FEE2E2',border:'none',borderRadius:8,padding:'6px 10px',color:'#EF4444',fontSize:12,fontWeight:600,cursor:'pointer'}}>로그아웃</button>
         </div>
       </div>
