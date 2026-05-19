@@ -11,7 +11,7 @@
  */
 import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { doc, getDoc, getDocs, collection, deleteDoc, setDoc, increment } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, deleteDoc, setDoc, increment, deleteField } from 'firebase/firestore';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { db, auth, googleProvider, ADMIN_EMAIL } from './firebase.js';
 
@@ -100,9 +100,10 @@ export default function AdminPage() {
       // ② 유저 목록 (캐시 → 폴백)
       let userList = [];
       const ulSnap = await getDoc(doc(db,'stats','userList'));
-      if (ulSnap.exists() && Object.keys(ulSnap.data().users||{}).length > 0) {
-        userList = Object.values(ulSnap.data().users||{}).filter(u=>u&&u.uid)
-          .sort((a,b)=>(b.lastActive||'')>(a.lastActive||'')?1:-1);
+      const cachedUsers = Object.values(ulSnap.exists() ? (ulSnap.data().users||{}) : {})
+        .filter(u => u && u.uid); // null 엔트리 제거
+      if (cachedUsers.length > 0) {
+        userList = cachedUsers.sort((a,b)=>(b.lastActive||'')>(a.lastActive||'')?1:-1);
       } else {
         const usersSnap = await getDocs(collection(db,'users'));
         userList = usersSnap.docs.map(d=>({
@@ -171,16 +172,28 @@ export default function AdminPage() {
     try {
       const dataSnap = await getDocs(collection(db,'users',uid,'data'));
       for (const d of dataSnap.docs) await deleteDoc(d.ref);
-      const sumSnap  = await getDocs(collection(db,'users',uid,'summary'));
-      for (const d of sumSnap.docs)  await deleteDoc(d.ref);
+      const sumSnap = await getDocs(collection(db,'users',uid,'summary'));
+      for (const d of sumSnap.docs) await deleteDoc(d.ref);
       await deleteDoc(doc(db,'users',uid));
-      // userList 캐시에서도 제거
-      await setDoc(doc(db,'stats','userList'), { users: { [uid]: null } }, { merge: true });
+      // userList 캐시 완전 재구성 (삭제 후)
+      const usersSnap = await getDocs(collection(db,'users'));
+      const newMap = {};
+      usersSnap.docs.forEach(d => {
+        newMap[d.id] = {
+          uid:d.id, nickname:d.data().nickname||'(이름없음)',
+          tier:d.data().tier||'일반', email:d.data().email||'',
+          lastActive:d.data().lastActive?.toDate?.()?.toISOString()||'',
+        };
+      });
+      await setDoc(doc(db,'stats','userList'), { users: newMap });
+      // 월간 통계 캐시도 초기화 (다음 loadStats에서 재계산)
+      await setDoc(doc(db,'stats',`monthly_${monthStr}`), { totalPractice: 0 }, { merge: true });
       await setDoc(doc(db,'stats','overview'), { totalUsers: increment(-1) }, { merge: true });
       alert(`"${nickname}" 님이 삭제됐어요.`);
       await loadStats();
     } catch (e) { alert('삭제 실패: ' + e.message); }
   };
+
 
   const moveMonth = (dir) => {
     let m=selMonth+dir, y=selYear;
