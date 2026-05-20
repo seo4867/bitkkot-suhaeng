@@ -120,7 +120,6 @@ export default function AdminPage() {
 
       // ① 전체 유저 목록 (항상 직접 읽기 - 가장 정확)
       const usersSnap = await getDocs(collection(db,'users'));
-      console.log('[Admin] 유저 문서 수:', usersSnap.docs.length);
       const userList  = usersSnap.docs.map(d => ({
         uid:        d.id,
         nickname:   d.data().nickname   || '(이름없음)',
@@ -168,7 +167,6 @@ export default function AdminPage() {
         tierAgg[t].users++;
       });
 
-      console.log('[Admin] 월간 통계 보유 유저 수:', Object.keys(contribs).length);
       const activeUsers  = Object.keys(contribs).length;
       const avgPractice  = activeUsers > 0 ? Math.round(totalPractice / activeUsers) : 0;
       const cheongsuRate = totalRecords > 0 ? Math.round((totalCheongsu / totalRecords) * 100) : 0;

@@ -1,6 +1,11 @@
-import { initializeApp }       from 'firebase/app';
+import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { initializeFirestore, persistentLocalCache, CACHE_SIZE_UNLIMITED } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  CACHE_SIZE_UNLIMITED,
+} from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -15,12 +20,15 @@ const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 
-// Firestore - 오프라인 로컬 캐싱 (최신 API)
+// Firestore - 멀티탭 지원 로컬 캐싱
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ cacheSizeBytes: CACHE_SIZE_UNLIMITED }),
+  localCache: persistentLocalCache({
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED,
+    tabManager: persistentMultipleTabManager(), // 여러 탭 동시 사용 지원
+  }),
 });
 
-export const googleProvider  = new GoogleAuthProvider();
+export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL;
