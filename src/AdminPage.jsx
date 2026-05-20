@@ -73,10 +73,7 @@ export default function AdminPage() {
   const [search,      setSearch]      = useState('');
   const [filterTier,  setFilterTier]  = useState('전체');
   const [sortBy,      setSortBy]      = useState('recent');
-  const [adminUids,   setAdminUids]   = useState([]);
-  const [search,      setSearch]      = useState('');
-  const [filterTier,  setFilterTier]  = useState('전체');
-  const [sortBy,      setSortBy]      = useState('recent');
+
 
   const now = new Date();
   const [selYear,  setSelYear]  = useState(now.getFullYear());
