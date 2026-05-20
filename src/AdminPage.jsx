@@ -11,7 +11,7 @@
  */
 import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { doc, getDoc, getDocs, collection, deleteDoc, setDoc, increment } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, deleteDoc, setDoc, increment, deleteField } from 'firebase/firestore';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { db, auth, googleProvider, ADMIN_EMAIL } from './firebase.js';
 
@@ -70,6 +70,13 @@ export default function AdminPage() {
   const [stats,       setStats]       = useState(null);
   const [users,       setUsers]       = useState([]);
   const [adminUids,   setAdminUids]   = useState([]);
+  const [search,      setSearch]      = useState('');
+  const [filterTier,  setFilterTier]  = useState('전체');
+  const [sortBy,      setSortBy]      = useState('recent');
+  const [adminUids,   setAdminUids]   = useState([]);
+  const [search,      setSearch]      = useState('');
+  const [filterTier,  setFilterTier]  = useState('전체');
+  const [sortBy,      setSortBy]      = useState('recent');
 
   const now = new Date();
   const [selYear,  setSelYear]  = useState(now.getFullYear());
@@ -236,6 +243,17 @@ export default function AdminPage() {
     setSelMonth(m); setSelYear(y);
   };
 
+  // 필터/검색/정렬 적용
+  const filteredUsers = users
+    .filter(u => filterTier === '전체' || (u.tier||'일반') === filterTier)
+    .filter(u => !search || u.nickname.includes(search) || (u.email||'').includes(search))
+    .sort((a,b) => {
+      if (sortBy === 'recent') return (b.lastActive||'') > (a.lastActive||'') ? 1 : -1;
+      if (sortBy === 'name')   return (a.nickname||'').localeCompare(b.nickname||'', 'ko');
+      if (sortBy === 'tier')   return ['어린이','청소년','대학생','일반'].indexOf(a.tier||'일반') - ['어린이','청소년','대학생','일반'].indexOf(b.tier||'일반');
+      return 0;
+    });
+
   const S = {
     wrap: {minHeight:'100vh',background:'#F5F0FF',padding:'20px 16px 60px',fontFamily:"'Noto Sans KR',sans-serif",maxWidth:480,margin:'0 auto'},
     card: {background:'#fff',borderRadius:16,padding:18,marginBottom:14,border:'1px solid #EDE9FE'},
@@ -372,9 +390,36 @@ export default function AdminPage() {
 
         {/* 가입자 명단 */}
         <div style={S.card}>
-          <span style={S.label}>👤 가입자 명단 ({users.length}명)</span>
-          <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:360,overflowY:'auto'}}>
-            {users.map((u,i)=>(
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+            <span style={{...S.label, marginBottom:0}}>👤 가입자 명단 ({filteredUsers.length}/{users.length}명)</span>
+          </div>
+
+          {/* 검색 + 필터 */}
+          <div style={{display:'flex',gap:6,marginBottom:10,flexWrap:'wrap'}}>
+            <input value={search} onChange={e=>setSearch(e.target.value)}
+              placeholder="이름 검색..."
+              style={{flex:1,minWidth:100,padding:'7px 12px',borderRadius:10,border:'1.5px solid #EDE9FE',fontSize:13,outline:'none',fontFamily:"'Noto Sans KR',sans-serif"}}/>
+            <select value={filterTier} onChange={e=>setFilterTier(e.target.value)}
+              style={{padding:'7px 10px',borderRadius:10,border:'1.5px solid #EDE9FE',fontSize:12,color:'#7C3AED',fontWeight:600,background:'#F9F7FF',outline:'none'}}>
+              <option>전체</option>
+              {TIERS.map(t=><option key={t}>{t}</option>)}
+            </select>
+            <select value={sortBy} onChange={e=>setSortBy(e.target.value)}
+              style={{padding:'7px 10px',borderRadius:10,border:'1.5px solid #EDE9FE',fontSize:12,color:'#7C3AED',fontWeight:600,background:'#F9F7FF',outline:'none'}}>
+              <option value="recent">최근접속순</option>
+              <option value="name">이름순</option>
+              <option value="tier">계층순</option>
+            </select>
+          </div>
+
+          {filteredUsers.length === 0 && (
+            <div style={{textAlign:'center',padding:20,color:'#A78BFA',fontSize:13}}>
+              {search || filterTier !== '전체' ? '검색 결과가 없어요' : '가입자가 없어요'}
+            </div>
+          )}
+
+          <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:480,overflowY:'auto'}}>
+            {filteredUsers.map((u,i)=>(
               <div key={u.uid} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:adminUids.includes(u.uid)?'#FFFBEB':'#FAFAFA',borderRadius:10,border:adminUids.includes(u.uid)?'1px solid #FCD34D':'none'}}>
                 <span style={{fontSize:12,color:'#C084FC',minWidth:22,fontWeight:700}}>{i+1}</span>
                 <span style={{flex:1,fontSize:13,color:'#374151',fontWeight:500}}>
