@@ -1,6 +1,6 @@
 {
   "name": "빛꽃수행일지",
-  "short_name": "빛꽃수행",
+  "short_name": "빛꽃수행일지",
   "description": "증산도 대학생 연합회 수행일지 앱",
   "start_url": "/",
   "display": "standalone",
